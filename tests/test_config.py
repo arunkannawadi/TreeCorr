@@ -374,6 +374,12 @@ def test_get():
     assert treecorr.config.get(config1, 'flip_g2', bool, False) is False
     assert treecorr.config.get(config1, 'flip_g2', bool) is None
 
+    config1['flip_g2'] = None
+    assert treecorr.config.get(config1, 'flip_g1', bool) is True
+    assert treecorr.config.get(config1, 'flip_g2', bool) is None
+    assert treecorr.config.get(config1, 'flip_g2', bool, True) is True
+    assert treecorr.config.get(config1, 'flip_g2', bool, False) is False
+
     assert treecorr.config.get_from_list(config1, 'k_col', 0, int) == 3
     assert treecorr.config.get_from_list(config1, 'k_col', 0, str) == '3'
     assert treecorr.config.get_from_list(config1, 'k_col', 0) == '3'
@@ -383,20 +389,25 @@ def test_get():
     assert treecorr.config.get_from_list(config1, 'ra_col', 1, int, 2) == 2
     assert treecorr.config.get_from_list(config1, 'ra_col', 1, int) is None
 
-    config1['flip_g1'] = [True, False]
+    config1['flip_g1'] = [True, False, None]
     assert treecorr.config.get_from_list(config1, 'flip_g1', 0, bool) is True
     assert treecorr.config.get_from_list(config1, 'flip_g1', 1, bool) is False
+    assert treecorr.config.get_from_list(config1, 'flip_g1', 2, bool) is None
     assert treecorr.config.get_from_list(config1, 'flip_g1', 0, bool, False) is True
+    assert treecorr.config.get_from_list(config1, 'flip_g1', 1, bool, True) is False
+    assert treecorr.config.get_from_list(config1, 'flip_g1', 2, bool, True) is True
+    assert treecorr.config.get_from_list(config1, 'flip_g1', 2, bool, False) is False
     assert treecorr.config.get_from_list(config1, 'flip_g2', 1, bool) is None
     assert treecorr.config.get_from_list(config1, 'flip_g2', 1, bool, False) is False
     assert treecorr.config.get_from_list(config1, 'flip_g2', 2, bool, False) is False
+    assert treecorr.config.get_from_list(config1, 'flip_g2', 3, bool, True) is True
 
     with assert_raises(IndexError):
         treecorr.config.get_from_list(config1, 'k_col', 2, int)
     with assert_raises(IndexError):
-        treecorr.config.get_from_list(config1, 'flip_g1', 2, bool)
+        treecorr.config.get_from_list(config1, 'flip_g1', 3, bool)
     with assert_raises(IndexError):
-        treecorr.config.get_from_list(config1, 'flip_g1', 2, bool, False)
+        treecorr.config.get_from_list(config1, 'flip_g1', 3, bool, False)
 
 
 @timer
@@ -435,15 +446,35 @@ def test_merge():
         else:
             assert config2[key] == valid_params[key][2]
 
-    # If conflicts, kwargs takes precedence
+    # If conflicts, kwargs takes precedence ...
     kwargs['ra_col'] = 'alpha2000'
     config2 = treecorr.config.merge_config(config1, kwargs, treecorr.Catalog._valid_params)
     assert config2['ra_col'] == 'alpha2000'
+
+    # ... even when when the value in kwargs is None.
+    kwargs = {'bin_size': 0.06, 'nbins': None}
+    config2 = treecorr.config.merge_config(config1, kwargs, treecorr.BinnedCorr2._valid_params)
+    assert config2['bin_size'] == 0.06
+    assert config2['min_sep'] == config1['min_sep']
+    assert config2['max_sep'] == config1['max_sep']
+    assert kwargs['nbins'] is None
+    assert config2['nbins'] is None
 
     # If kwargs has invalid parameters, exception is raised
     kwargs = { 'cat_prec' : 10 }
     with assert_raises(TypeError):
         treecorr.config.merge_config(config1, kwargs, treecorr.Catalog._valid_params)
+
+
+@timer
+def test_convert():
+    """Test converting a value to a given type.
+    """
+    assert treecorr.config.convert('10', int, 'n_bins') == 10
+    assert treecorr.config.convert('yes', bool, 'flip_g1') is True
+    assert treecorr.config.convert('0.9', float, 'bin_slop') == 0.9
+    assert treecorr.config.convert(None, str, 'x_units') is None
+    assert np.isclose(treecorr.config.convert('deg', float, 'ra_units'), np.pi / 180.)
 
 
 @timer
@@ -874,6 +905,7 @@ if __name__ == '__main__':
     test_print()
     test_get()
     test_merge()
+    test_convert()
     test_omp()
     test_util()
     test_gen_read_write()
